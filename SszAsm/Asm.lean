@@ -1,4 +1,4 @@
-import LeanAsm.Symbolic
+import LeanAsm.Frontend
 
 /-!
 Compatibility surface for the original `SszAsm.Asm` namespace. The symbolic
@@ -58,6 +58,9 @@ def emitReg (r : Reg) : String := toString r
 abbrev validSymbol := LeanAsm.Symbolic.validSymbol
 abbrev emitLine := LeanAsm.Symbolic.emitLine
 abbrev emit := LeanAsm.Symbolic.emit
+
+def emitAsm (name : String) (program : Program) : Except String String :=
+  LeanAsm.emitAsm name program
 
 def saved : List Reg :=
   [.ra, .s0, .s1, .s2, .s3, .s4, .s5, .s6, .s7, .s8, .s9, .s10, .s11]

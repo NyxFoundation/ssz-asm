@@ -5,7 +5,7 @@ defaultTargets = ["SszAsm"]
 [[require]]
 name = "LeanAsm"
 git = "https://github.com/NyxFoundation/LeanAsm"
-rev = "b292dc77fb9affb1174052fca819135776aa24c6"
+rev = "76bf12c339bf6dce140c817d334d2a4d0f0f48d7"
 
 [[lean_lib]]
 name = "SszAsm"
