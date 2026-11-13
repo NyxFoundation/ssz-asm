@@ -1,0 +1,6 @@
+name = "ssz-asm"
+version = "0.1.0"
+defaultTargets = ["SszAsm"]
+
+[[lean_lib]]
+name = "SszAsm"
