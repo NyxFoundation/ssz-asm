@@ -1,0 +1,1 @@
+eth-ssz-specs @ https://github.com/ethereum/ssz-specs/archive/441165848263efe5d9f82f4e85b8e417fe8e36af.tar.gz
