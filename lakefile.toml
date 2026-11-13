@@ -2,5 +2,10 @@ name = "ssz-asm"
 version = "0.1.0"
 defaultTargets = ["SszAsm"]
 
+[[require]]
+name = "LeanAsm"
+git = "https://github.com/NyxFoundation/LeanAsm"
+rev = "c04af0c5510d9074dae52a0874369f646c40c98a"
+
 [[lean_lib]]
 name = "SszAsm"
