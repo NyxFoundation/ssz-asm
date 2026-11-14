@@ -11,7 +11,7 @@ Upstream evm-asm proofs do not apply to this implementation.
 
 Requirements: [elan](https://lean-lang.org/install/), GNU RISC-V binutils,
 Clang with a RISC-V target, and QEMU user-mode RISC-V. Lean 4.33.0 is pinned;
-there are no external Lean dependencies.
+the symbolic assembly foundation is provided by the commit-pinned `LeanAsm` dependency.
 
 ```sh
 lake build
@@ -75,9 +75,13 @@ Runtime lengths are 64-bit; serialized sequences/containers must be below 2^32.
 Sparse declared capacities remain Lean naturals. Generalized indices and Merkle
 proof APIs are excluded.
 
-The instruction representation/emitter adapts evm-asm at `7e65e4d`, not its EVM
-programs, execution semantics, or proof libraries. [NOTICE.md](NOTICE.md) records
-the source pins and licensing.
+The instruction representation/emitter is shared through `NyxFoundation/LeanAsm`.
+`SszAsm.Asm.Program` directly implements the common `EmitAsm` capability through
+LeanAsm's symbolic frontend; it intentionally does not claim fixed-width
+`LowerRv64` support for labels, sections, and pseudo instructions. LeanAsm adapts
+the reusable macro-assembly design from evm-asm at `7e65e4d`, not its
+EVM programs or zkVM environment. [NOTICE.md](NOTICE.md) records the source pins
+and licensing.
 
 ## Tests
 

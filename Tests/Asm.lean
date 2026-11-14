@@ -19,4 +19,5 @@ private def rejected (line : Line) : Bool :=
 #guard rejected (.label "unsafe\nret")
 #guard Schema.fixedSize (.vector (.uint 64) 3) == some 24
 #guard Schema.fixedSize (.container [("x", .uint 16), ("y", .byteList 32)]) == none
+#guard emitted (.shift .srli .a1 .a0 63) "  srli x11, x10, 63"
 #guard frameSize 1 == 128

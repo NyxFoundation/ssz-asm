@@ -1,6 +1,16 @@
 {"version": "1.2.0",
  "packagesDir": ".lake/packages",
- "packages": [],
+ "packages":
+ [{"url": "https://github.com/NyxFoundation/LeanAsm",
+   "type": "git",
+   "subDir": null,
+   "scope": "",
+   "rev": "9e43e964afd481cc1e1baa7f983a58571699792c",
+   "name": "LeanAsm",
+   "manifestFile": "lake-manifest.json",
+   "inputRev": "9e43e964afd481cc1e1baa7f983a58571699792c",
+   "inherited": false,
+   "configFile": "lakefile.toml"}],
  "name": "«ssz-asm»",
  "lakeDir": ".lake",
  "fixedToolchain": false}
