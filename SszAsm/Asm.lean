@@ -1,4 +1,5 @@
 import LeanAsm.Frontend
+import LeanAsm.ABI.LP64
 
 /-!
 Compatibility surface for the original `SszAsm.Asm` namespace. The symbolic
@@ -54,7 +55,7 @@ export LeanAsm.Symbolic.Line (rr ri shift load store mv li branch jump call la r
 export LeanAsm.Symbolic.Line (label function endFunction text rodata align word bytes)
 end Line
 
-def emitReg (r : Reg) : String := toString r
+abbrev emitReg : Reg → String := toString
 abbrev validSymbol := LeanAsm.Symbolic.validSymbol
 abbrev emitLine := LeanAsm.Symbolic.emitLine
 abbrev emit := LeanAsm.Symbolic.emit
@@ -63,11 +64,13 @@ def emitAsm (name : String) (program : Program) : Except String String :=
   LeanAsm.emitAsm name program
 
 def saved : List Reg :=
-  [.ra, .s0, .s1, .s2, .s3, .s4, .s5, .s6, .s7, .s8, .s9, .s10, .s11]
+  LeanAsm.ABI.LP64.calleeSaved
 
-def localSize (locals : Nat) : Nat := (locals + 15) / 16 * 16
+abbrev localSize : Nat → Nat :=
+  LeanAsm.ABI.LP64.localSize
 
-def frameSize (locals : Nat) : Nat := localSize locals + 112
+abbrev frameSize : Nat → Nat :=
+  LeanAsm.ABI.LP64.frameSize
 
 def enter (locals : Nat := 0) : Program :=
   [.ri .addi .sp .sp (-(Int.ofNat (frameSize locals)))] ++

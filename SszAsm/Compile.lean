@@ -32,6 +32,6 @@ def compile (schemas : List (String × Schema)) : Except String Asm.Program := d
 
 /-- Render typed macro assembly, rejecting invalid schemas, symbols, and operands. -/
 def emitAssembly (schemas : List (String × Schema)) : Except String String := do
-  Asm.emit (← compile schemas)
+  Asm.emitAsm "" (← compile schemas)
 
 end SszAsm
