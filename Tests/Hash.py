@@ -1,20 +1,16 @@
-"""Execute generated RV64IM against pinned Python SSZ; install Tests/requirements.txt first."""
+"""Execute generated assembly against pinned Python SSZ; install Tests/requirements.txt first."""
 
 import os
 from pathlib import Path
 import re
-import shutil
 import struct
 import subprocess
 import tempfile
 
+from Runner import command, executable, run, target_argument
 from HashCases import SPECS, cases
 from SchemaParity import check_reference
 from ssz.trees import merkleize, merkleize_progressive
-
-
-def run(command: list[str], **kwargs) -> subprocess.CompletedProcess:
-    return subprocess.run(command, check=True, **kwargs)
 
 
 def runtime_vectors(temp: Path) -> None:
@@ -36,20 +32,19 @@ def runtime_vectors(temp: Path) -> None:
 def emit_test_sources(temp: Path) -> Path:
     entries = ",\n".join(f'  ("fixture{i}", {s.lean()})' for i, s in enumerate(SPECS))
     lean = temp / "HashEmit.lean"
-    lean.write_text('''import SszAsm.Hash
-import SszAsm.Codec
-import SszAsm.Runtime
+    lean.write_text('''import SszAsm
 open SszAsm
 set_option maxRecDepth 100000
 def fixtures : List (String × Schema) := [
 ''' + entries + ''']
-def main : IO Unit := do
+def main (args : List String) : IO Unit := do
+  let target ← IO.ofExcept (Target.parse (args.headD "rv64"))
   for (_, schema) in fixtures do
     if let .error e := schema.validate then throw (IO.userError e)
   let code := Runtime.program ++ Hash.runtime ++ fixtures.flatMap fun (n, s) =>
     (Schema.nodes n s).flatMap fun (name, schema) =>
       Codec.compileNode name schema ++ Hash.compileNode name schema
-  match Asm.emit code with
+  match emitProgram code target with
   | .error e => throw (IO.userError e)
   | .ok asm => (← IO.getStdout).putStr asm
 ''')
@@ -67,42 +62,26 @@ def main : IO Unit := do
     return lean
 
 
-def executable(temp: Path, source: Path, harness: str, stem: str) -> Path:
-    asm, obj, test_obj = (temp / f"{stem}{suffix}" for suffix in (".s", ".o", "_test.o"))
-    with asm.open("w") as output:
-        run(["lake", "env", "lean", "--run", str(source)], stdout=output)
-    run(["riscv64-unknown-elf-as", "-march=rv64im", "-mabi=lp64", str(asm), "-o", str(obj)])
-    run(["clang", "--target=riscv64-unknown-elf", "-march=rv64im", "-mabi=lp64",
-         "-ffreestanding", "-fno-stack-protector", "-fno-builtin", "-O1", "-Wall", "-Wextra",
-         "-Werror", "-Iinclude", f"-I{temp}", "-c", harness, "-o", str(test_obj)])
-    binary = temp / stem
-    run(["riscv64-unknown-elf-ld", "-static", "-e", "_start", str(obj), str(test_obj),
-         "-o", str(binary)])
-    return binary
-
-
 def main() -> None:
     os.chdir(Path(__file__).resolve().parents[1])
     check_reference()
-    qemu = os.environ.get("QEMU_RISCV64") or shutil.which("qemu-riscv64")
-    if not qemu:
-        raise SystemExit("Install qemu-riscv64 on PATH or set QEMU_RISCV64")
-    run(["lake", "build", "SszAsm.Hash", "SszAsm.Codec", "SszAsm.Runtime"])
+    target = target_argument()
+    run(["lake", "build"])
     corpus = cases()
     packet = struct.pack("<Q", len(corpus)) + b"".join(c.packet() for c in corpus)
     with tempfile.TemporaryDirectory(prefix="ssz-hash-") as directory:
         temp = Path(directory)
         runtime_vectors(temp)
-        kat = executable(temp, Path("Tests/HashRuntime.lean"), "Tests/HashRuntime.c", "runtime")
-        run([qemu, str(kat)], timeout=30)
+        kat = executable(temp, Path("Tests/HashRuntime.lean"), "Tests/HashRuntime.c", "runtime", target)
+        run(command(kat, target), timeout=30)
         print("SHA-256 known answers, 22 Merkle vectors, and ABI checks passed", flush=True)
-        binary = executable(temp, emit_test_sources(temp), "Tests/HashHarness.c", "differential")
-        result = subprocess.run([qemu, str(binary)], input=packet, capture_output=True, timeout=120)
+        binary = executable(temp, emit_test_sources(temp), "Tests/HashHarness.c", "differential", target)
+        result = subprocess.run(command(binary, target), input=packet, capture_output=True, timeout=120)
         print(result.stdout.decode(), end="", flush=True)
         if result.returncode:
             match = re.search(rb"FAIL case (\d+)", result.stdout)
             label = corpus[int(match[1])].label if match else "unknown case"
-            raise SystemExit(f"QEMU failed ({result.returncode}): {label}\n{result.stderr.decode()}")
+            raise SystemExit(f"{target} failed ({result.returncode}): {label}\n{result.stderr.decode()}")
 
 
 if __name__ == "__main__":

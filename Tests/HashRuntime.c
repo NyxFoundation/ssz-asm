@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include "Abi.h"
 #include "hash_runtime_vectors.h"
 
 extern void ssz_sha256_pair(uint8_t *, const uint8_t *);
@@ -46,39 +47,20 @@ static int merkle(void) {
 }
 
 static int abi(void) {
-  register uint64_t r0 __asm__("s0") = 101, r1 __asm__("s1") = 102;
-  register uint64_t r2 __asm__("s2") = 103, r3 __asm__("s3") = 104;
-  register uint64_t r4 __asm__("s4") = 105, r5 __asm__("s5") = 106;
-  register uint64_t r6 __asm__("s6") = 107, r7 __asm__("s7") = 108;
-  register uint64_t r8 __asm__("s8") = 109, r9 __asm__("s9") = 110;
-  register uint64_t r10 __asm__("s10") = 111, r11 __asm__("s11") = 112;
+  ABI_SEED();
   uint8_t input[64], out[32];
   for (unsigned i = 0; i < 64; ++i) input[i] = i;
-  __asm__ volatile("" : "+r"(r0), "+r"(r1), "+r"(r2), "+r"(r3),
-    "+r"(r4), "+r"(r5), "+r"(r6), "+r"(r7), "+r"(r8), "+r"(r9),
-    "+r"(r10), "+r"(r11) : : "memory");
+  ABI_BARRIER();
   ssz_sha256_pair(out, input);
   ssz_merkleize(out, input, 2, 7);
   ssz_merkleize_progressive(out, input, 2);
-  __asm__ volatile("" : "+r"(r0), "+r"(r1), "+r"(r2), "+r"(r3),
-    "+r"(r4), "+r"(r5), "+r"(r6), "+r"(r7), "+r"(r8), "+r"(r9),
-    "+r"(r10), "+r"(r11) : : "memory");
-  if (r0 != 101 || r1 != 102 || r2 != 103 || r3 != 104) return 100;
-  if (r4 != 105 || r5 != 106 || r6 != 107 || r7 != 108) return 101;
-  if (r8 != 109 || r9 != 110 || r10 != 111 || r11 != 112) return 102;
-  return 0;
+  ABI_BARRIER();
+  return ABI_INTACT ? 0 : 100;
 }
 
-static int test(void) {
+int test_main(void) {
   int result = known_answers();
   if (result) return result;
   result = merkle();
   return result ? result : abi();
-}
-
-void _start(void) {
-  register uint64_t result __asm__("a0") = test();
-  register uint64_t syscall __asm__("a7") = 93;
-  __asm__ volatile("ecall" : : "r"(result), "r"(syscall) : "memory");
-  __builtin_unreachable();
 }

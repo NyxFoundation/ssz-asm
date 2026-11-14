@@ -1,17 +1,36 @@
 # ssz-asm
 
-A Lean 4 macro-assembly library for SSZ on little-endian RISC-V RV64IM.
-It generates `serialize`, `deserialize`, and `hash_tree_root` functions using
-the LP64 C ABI. No dedicated CLI, zkVM, malloc, or crypto accelerator is required.
+A Lean 4 macro-assembly library for SSZ on little-endian RISC-V RV64IM and
+Linux x86-64. It generates `serialize`, `deserialize`, and `hash_tree_root`
+functions using the RISC-V LP64 or System V AMD64 C ABI. No dedicated CLI,
+zkVM, malloc, or crypto accelerator is required.
 
 **Experimental and unproved.** Execution tests are not Lean correctness proofs.
 Upstream evm-asm proofs do not apply to this implementation.
 
 ## Generate and run
 
-Requirements: [elan](https://lean-lang.org/install/), GNU RISC-V binutils,
-Clang with a RISC-V target, and QEMU user-mode RISC-V. Lean 4.33.0 is pinned;
-the symbolic assembly foundation is provided by the commit-pinned `LeanAsm` dependency.
+Install [elan](https://lean-lang.org/install/). Lean 4.33.0 and the `LeanAsm`
+assembly foundation are commit/version-pinned.
+
+### Linux x86-64
+
+On an x86-64 host with GCC and GNU binutils:
+
+```sh
+lake build
+lake env lean --run Examples/Generate.lean x86_64
+gcc -O1 -Wall -Wextra -Werror -fPIE -pie -Iinclude -I.build Examples/Message.c .build/message.s -o .build/message-x86_64
+.build/message-x86_64
+```
+
+This uses scalar instructions only, with no SIMD or SHA extension requirement.
+The initial backend uses stack slots for virtual registers; it is not optimized
+for throughput. Windows and 32-bit x86 are not supported.
+
+### RISC-V RV64IM
+
+Install GNU RISC-V binutils, Clang with a RISC-V target, and QEMU user-mode RISC-V:
 
 ```sh
 lake build
@@ -25,7 +44,8 @@ qemu-riscv64 .build/message.elf
 
 Exit zero means the C example encoded and decoded a message with matching roots.
 Lean constructs typed instructions and labels; GNU binutils assembles them.
-Clang builds only the C caller. Only the example startup uses a Linux syscall.
+GCC or Clang builds only the C caller. The generated library has no syscalls;
+the freestanding RISC-V example startup uses one to exit.
 
 ## Lean API
 
@@ -37,16 +57,19 @@ def message : Schema :=
   .container [("id", .uint 64), ("payload", .byteList 4096)]
 
 #check compile       -- List (String × Schema) → Except String Asm.Program
-#check emitAssembly  -- List (String × Schema) → Except String String
+#check emitAssembly  -- List (String × Schema) → Target → Except String String
 #check emitHeader    -- List (String × Schema) → Except String String
 
 #eval emitHeader [("Message", message)]
+#eval (emitAssembly [("Message", message)] .x86_64).isOk
 ```
 
 Pass all public schemas to one emission call so shared routines occur once.
 Names must be ASCII identifiers; `ssz_` is reserved. Public/child name collisions
 are rejected. [Examples/Generate.lean](Examples/Generate.lean) writes the assembly
-and C declarations through these APIs, without a product CLI.
+and C declarations through these APIs, without a product CLI. Its optional
+`rv64` or `x86_64` argument selects the target; the default remains `rv64`.
+The C header and value layout are identical for both targets.
 
 ## C ABI
 
@@ -76,9 +99,11 @@ Sparse declared capacities remain Lean naturals. Generalized indices and Merkle
 proof APIs are excluded.
 
 The instruction representation/emitter is shared through `NyxFoundation/LeanAsm`.
-`SszAsm.Asm.Program` directly implements the common `EmitAsm` capability through
-LeanAsm's symbolic frontend; it intentionally does not claim fixed-width
-`LowerRv64` support for labels, sections, and pseudo instructions. LeanAsm adapts
+`SszAsm.Asm.Program` adds target-owned frame directives to LeanAsm's scalar
+symbolic vocabulary. Its `EmitAsm` instance emits RISC-V;
+`emitProgram program .x86_64` lowers to LeanAsm's typed x86-64 symbolic program.
+Neither backend claims fixed-instruction lowering for a translation unit with
+labels and data sections. LeanAsm adapts
 the reusable macro-assembly design from evm-asm at `7e65e4d`, not its
 EVM programs or zkVM environment. [NOTICE.md](NOTICE.md) records the source pins
 and licensing.
@@ -94,14 +119,23 @@ lake env lean Tests/Asm.lean
 lake env lean Tests/Declarations.lean
 lake env lean --run Tests/Public.lean
 .venv/bin/python Tests/SchemaParity.py
-.venv/bin/python Tests/Codec.py
-.venv/bin/python Tests/CodecFuzz.py
-.venv/bin/python Tests/Hash.py
 ```
 
+On Linux x86-64, run the native lowering and SSZ suites:
+
+```sh
+.venv/bin/python Tests/X64.py
+.venv/bin/python Tests/Codec.py --target x86_64
+.venv/bin/python Tests/CodecFuzz.py --target x86_64
+.venv/bin/python Tests/Hash.py --target x86_64
+```
+
+Run the same SSZ suites under RISC-V QEMU with `--target rv64` (the default).
 Set `QEMU_RISCV64=/path/to/qemu-riscv64` if QEMU is not on PATH.
 Tests execute generated assembly and compare encoding, decoded structure, roots,
 rejections, and compatibility against the pinned reference. They include
 offsets, padding, arena overflow, scratch reuse, callee-saved registers,
 SHA-256 known answers, progressive boundaries, and sparse capacities up to 2^200.
+The native lowering suite also exercises arithmetic edge cases, signed word
+extension, unaligned loads/stores, stack alignment, and six-argument nested calls.
 Test artifacts are temporary; no assembly snapshots are required.

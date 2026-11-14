@@ -41,7 +41,7 @@ private def writeU32 : Program :=
    .shift .srli .t0 .a1 24, .store .sb .t0 .a0 3,
    .ret, .endFunction "ssz_write_u32"]
 
-/-- Shared freestanding RV64IM routines. No zero-size copy dereferences memory. -/
+/-- Shared freestanding routines. No zero-size copy dereferences memory. -/
 def program : Program := copy ++ zero ++ alloc ++ readU32 ++ writeU32
 
 end SszAsm.Runtime

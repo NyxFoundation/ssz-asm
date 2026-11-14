@@ -12,12 +12,11 @@ def main : IO Unit := do
   let program ← match compile schemas with
     | .ok p => pure p
     | .error e => throw (IO.userError e)
-  let asm ← match Asm.emit program with
-    | .ok a => pure a
-    | .error e => throw (IO.userError e)
-  require ((asm.splitOn ".globl Message_serialize").length == 2)
-  require ((asm.splitOn ".globl Message_deserialize").length == 2)
-  require ((asm.splitOn ".globl Message_hash_tree_root").length == 2)
-  require ((asm.splitOn ".globl ssz_copy").length == 2)
+  for target in [Target.rv64, .x86_64] do
+    let asm ← IO.ofExcept (emitProgram program target)
+    require ((asm.splitOn ".globl Message_serialize").length == 2)
+    require ((asm.splitOn ".globl Message_deserialize").length == 2)
+    require ((asm.splitOn ".globl Message_hash_tree_root").length == 2)
+    require ((asm.splitOn ".globl ssz_copy").length == 2)
   require (!(emitAssembly [("bad;symbol", .byte)]).isOk)
   require (!(emitAssembly [("A", .byte), ("A", .byte)]).isOk)

@@ -3,7 +3,7 @@
 .text
 .globl _start
 _start:
-  call example
+  call main
   li a7, 93
   ecall
 .section .note.GNU-stack,"",@progbits

@@ -1,7 +1,7 @@
-import SszAsm.Hash
-import SszAsm.Runtime
+import SszAsm
 
-def main : IO Unit := do
-  match SszAsm.Asm.emit (SszAsm.Runtime.program ++ SszAsm.Hash.runtime) with
+def main (args : List String) : IO Unit := do
+  let target ← IO.ofExcept (SszAsm.Target.parse (args.headD "rv64"))
+  match SszAsm.emitProgram (SszAsm.Runtime.program ++ SszAsm.Hash.runtime) target with
   | .error e => throw (IO.userError e)
   | .ok asm => (← IO.getStdout).putStr asm

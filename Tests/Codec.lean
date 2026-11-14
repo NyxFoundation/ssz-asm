@@ -1,5 +1,4 @@
-import SszAsm.Codec
-import SszAsm.Runtime
+import SszAsm
 
 open SszAsm
 
@@ -10,11 +9,12 @@ private def fixtures : List (String × Schema) := [
   ("huge_list", .list (.uint 256) (2^64)),
   ("huge_element", .list (.byteVector (2^64)) 1)]
 
-def main : IO Unit := do
+def main (args : List String) : IO Unit := do
+  let target ← IO.ofExcept (Target.parse (args.headD "rv64"))
   for (_, schema) in fixtures do
     if let .error error := schema.validate then throw (IO.userError error)
   let program := Runtime.program ++ fixtures.flatMap fun (name, schema) =>
     (Schema.nodes name schema).flatMap fun (n, s) => Codec.compileNode n s
-  match Asm.emit program with
+  match emitProgram program target with
   | .error error => throw (IO.userError error)
   | .ok asm => (← IO.getStdout).putStr asm
