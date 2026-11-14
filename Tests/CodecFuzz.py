@@ -1,8 +1,6 @@
-"""Deterministic mutation tests of real RV64 decoders against ssz-specs."""
+"""Deterministic mutation tests of generated decoders against ssz-specs."""
 
-import os
 import random
-import shutil
 import struct
 import subprocess
 import tempfile
@@ -11,7 +9,8 @@ from pathlib import Path
 import ssz
 from ssz.uint import BaseUint
 
-from SchemaParity import ROOT, build, check_reference, declarations, lean
+from Runner import command, executable, run, target_argument
+from SchemaParity import build, check_reference, declarations, lean
 
 
 def sample(cls: type, rng: random.Random):
@@ -85,11 +84,11 @@ def schema_cases(rng: random.Random) -> tuple[list[tuple], list[tuple[int, bytes
 
 def emit_fixtures(temp: Path, schemas: list[tuple]) -> None:
     definitions = ",\n".join(f'("Fuzz{i}", {lean(t)})' for i, t in enumerate(schemas))
-    source = """import SszAsm.Codec
-import SszAsm.Runtime
+    source = """import SszAsm
 open SszAsm
 
-def main : IO Unit := do
+def main (args : List String) : IO Unit := do
+  let target ← IO.ofExcept (Target.parse (args.headD "rv64"))
   let schemas : List (String × Schema) := [
 """ + definitions + """
   ]
@@ -99,7 +98,7 @@ def main : IO Unit := do
     | .error e => throw (IO.userError e)
   let program := Runtime.program ++ schemas.flatMap fun (name, schema) =>
     (Schema.nodes name schema).flatMap fun (n, t) => Codec.compileNode n t
-  match Asm.emit program with
+  match emitProgram program target with
   | .ok text => (← IO.getStdout).putStr text
   | .error e => throw (IO.userError e)
 """
@@ -111,44 +110,24 @@ def main : IO Unit := do
     (temp / "fuzz_cases.h").write_text(header)
 
 
-def compile_harness(temp: Path) -> Path:
-    def run(args: list[str], **kwargs: object) -> None:
-        subprocess.run(args, cwd=ROOT, check=True, **kwargs)
-
-    run(["lake", "build", "SszAsm.Codec", "SszAsm.Runtime"])
-    with (temp / "library.s").open("w") as output:
-        run(["lake", "env", "lean", "--run", str(temp / "Generate.lean")], stdout=output)
-    run(["riscv64-unknown-elf-as", "-march=rv64im", "-mabi=lp64",
-         str(temp / "library.s"), "-o", str(temp / "library.o")])
-    run(["clang", "--target=riscv64-unknown-elf", "-march=rv64im", "-mabi=lp64",
-         "-ffreestanding", "-fno-builtin", "-fno-stack-protector", "-O1",
-         "-Wall", "-Wextra", "-Werror", "-Iinclude", f"-I{temp}",
-         "-c", "Tests/CodecFuzz.c", "-o", str(temp / "harness.o")])
-    executable = temp / "fuzz"
-    run(["riscv64-unknown-elf-ld", "-static", "-e", "_start", str(temp / "library.o"),
-         str(temp / "harness.o"), "-o", str(executable)])
-    return executable
-
-
 def main() -> None:
     check_reference()
-    qemu = os.environ.get("QEMU_RISCV64") or shutil.which("qemu-riscv64")
-    if not qemu:
-        raise SystemExit("Install qemu-riscv64 or set QEMU_RISCV64")
+    target = target_argument()
+    run(["lake", "build"])
     schemas, cases = schema_cases(random.Random(20261112))
     wire = b"".join(struct.pack("<II", i, len(data)) + data for i, data, _ in cases)
     with tempfile.TemporaryDirectory(prefix="ssz-codec-fuzz-") as directory:
         temp = Path(directory)
         emit_fixtures(temp, schemas)
-        executable = compile_harness(temp)
-        result = subprocess.run([qemu, str(executable)], input=wire, capture_output=True,
+        binary = executable(temp, temp / "Generate.lean", "Tests/CodecFuzz.c", "fuzz", target)
+        result = subprocess.run(command(binary, target), input=wire, capture_output=True,
                                 check=True, timeout=90)
     if len(result.stdout) != len(cases):
         raise AssertionError("The decoder did not return one result per input")
     for actual, (index, data, expected) in zip(result.stdout, cases, strict=True):
         if actual != expected:
             raise AssertionError(f"Schema {index}: {data.hex()} returned {actual}, expected {expected}")
-    print(f"{len(cases)} RV64 acceptance/roundtrip mutation cases match ssz-specs")
+    print(f"{len(cases)} {target} acceptance/roundtrip mutation cases match ssz-specs")
 
 
 if __name__ == "__main__":

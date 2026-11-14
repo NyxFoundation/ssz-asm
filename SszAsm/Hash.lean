@@ -31,7 +31,7 @@ private def body (fn name : String) : Schema → Asm.Program
 def compileNode (name : String) (schema : Schema) : Asm.Program :=
   rootFunction name (body (name ++ "_root") name schema) ++ publicFunction name
 
-/-- SHA-256 and in-place Merkle helpers; all crypto executes as generated RV64IM. -/
+/-- SHA-256 and in-place Merkle helpers; all crypto executes as generated scalar assembly. -/
 def runtime : Asm.Program := Sha256.program ++ Merkle.program
 
 end SszAsm.Hash

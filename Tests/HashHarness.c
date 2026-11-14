@@ -1,4 +1,6 @@
 #include "ssz_asm.h"
+#include "Platform.h"
+#include "Abi.h"
 #include "hash_declarations.h"
 
 typedef unsigned char U8;
@@ -16,25 +18,16 @@ static U8 scratch_storage[BUFFER_SIZE] __attribute__((aligned(8)));
 static U64 test_index;
 static U64 assertions;
 
-static I64 syscall3(U64 n, U64 x, void *p, U64 size) {
-  register U64 a0 __asm__("a0") = x;
-  register void *a1 __asm__("a1") = p;
-  register U64 a2 __asm__("a2") = size;
-  register U64 a7 __asm__("a7") = n;
-  __asm__ volatile("ecall" : "+r"(a0) : "r"(a1), "r"(a2), "r"(a7) : "memory");
-  return (I64)a0;
-}
-
 static void number(U64 n) {
   char digits[24]; U64 i = 24;
   do { digits[--i] = '0' + n % 10; n /= 10; } while (n);
-  syscall3(64, 1, digits + i, 24 - i);
+  syscall3(SYS_WRITE, 1, digits + i, 24 - i);
 }
 
 __attribute__((noreturn)) static void failure(U64 line) {
-  syscall3(64, 1, "FAIL case ", 10); number(test_index);
-  syscall3(64, 1, " line ", 6); number(line); syscall3(64, 1, "\n", 1);
-  syscall3(93, 1, 0, 0); __builtin_unreachable();
+  syscall3(SYS_WRITE, 1, "FAIL case ", 10); number(test_index);
+  syscall3(SYS_WRITE, 1, " line ", 6); number(line); syscall3(SYS_WRITE, 1, "\n", 1);
+  syscall3(SYS_EXIT, 1, 0, 0); __builtin_unreachable();
 }
 
 #define CHECK(x) do { ++assertions; if (!(x)) failure(__LINE__); } while (0)
@@ -42,7 +35,7 @@ __attribute__((noreturn)) static void failure(U64 line) {
 static void read_bytes(void *p, U64 n) {
   U8 *dst = p;
   while (n) {
-    I64 got = syscall3(63, 0, dst, n);
+    I64 got = syscall3(SYS_READ, 0, dst, n);
     CHECK(got > 0 && (U64)got <= n); dst += got; n -= got;
   }
 }
@@ -98,23 +91,12 @@ static void compare(const ssz_value *expected, const ssz_value *actual) {
 }
 
 static void public_abi(const Operations *ops, const ssz_value *value, U64 budget) {
-  register U64 r0 __asm__("s0") = 101, r1 __asm__("s1") = 102;
-  register U64 r2 __asm__("s2") = 103, r3 __asm__("s3") = 104;
-  register U64 r4 __asm__("s4") = 105, r5 __asm__("s5") = 106;
-  register U64 r6 __asm__("s6") = 107, r7 __asm__("s7") = 108;
-  register U64 r8 __asm__("s8") = 109, r9 __asm__("s9") = 110;
-  register U64 r10 __asm__("s10") = 111, r11 __asm__("s11") = 112;
+  ABI_SEED();
   ssz_arena scratch = {scratch_storage, budget}; U8 root[32];
-  __asm__ volatile("" : "+r"(r0), "+r"(r1), "+r"(r2), "+r"(r3),
-    "+r"(r4), "+r"(r5), "+r"(r6), "+r"(r7), "+r"(r8), "+r"(r9),
-    "+r"(r10), "+r"(r11) : : "memory");
+  ABI_BARRIER();
   CHECK(ops->hash(value, root, &scratch) == 0);
-  __asm__ volatile("" : "+r"(r0), "+r"(r1), "+r"(r2), "+r"(r3),
-    "+r"(r4), "+r"(r5), "+r"(r6), "+r"(r7), "+r"(r8), "+r"(r9),
-    "+r"(r10), "+r"(r11) : : "memory");
-  CHECK(r0 == 101 && r1 == 102 && r2 == 103 && r3 == 104);
-  CHECK(r4 == 105 && r5 == 106 && r6 == 107 && r7 == 108);
-  CHECK(r8 == 109 && r9 == 110 && r10 == 111 && r11 == 112);
+  ABI_BARRIER();
+  CHECK(ABI_INTACT);
 }
 
 static void regular(const Operations *ops, const ssz_value *value, U64 len,
@@ -161,14 +143,10 @@ static void execute(void) {
   CHECK(scratch.next == scratch_storage && scratch.remaining == budget);
 }
 
-static int run(void) {
+int test_main(void) {
   U64 count = read_word();
   for (test_index = 0; test_index < count; ++test_index) execute();
-  number(count); syscall3(64, 1, " differential cases, ", 21);
-  number(assertions); syscall3(64, 1, " checks passed\n", 15);
+  number(count); syscall3(SYS_WRITE, 1, " differential cases, ", 21);
+  number(assertions); syscall3(SYS_WRITE, 1, " checks passed\n", 15);
   return 0;
-}
-
-void _start(void) {
-  U64 result = run(); syscall3(93, result, 0, 0); __builtin_unreachable();
 }

@@ -6,7 +6,7 @@ _Static_assert(sizeof(ssz_arena) == 16, "The generated library uses LP64 arenas"
 static uint8_t arena_storage[8192] __attribute__((aligned(8)));
 static uint8_t scratch_storage[8192] __attribute__((aligned(8)));
 
-int example(void) {
+int main(void) {
     const uint8_t id[8] = {42};
     const uint8_t payload[3] = {0xaa, 0xbb, 0xcc};
     const ssz_value fields[] = {{id, 8, 0}, {payload, 3, 0}};

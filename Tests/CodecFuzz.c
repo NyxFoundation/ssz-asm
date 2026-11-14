@@ -1,4 +1,5 @@
 #include "ssz_asm.h"
+#include "Platform.h"
 
 typedef int64_t (*Encode)(const ssz_value *, uint8_t *, uint64_t);
 typedef int64_t (*Decode)(const uint8_t *, uint64_t, ssz_value *, ssz_arena *);
@@ -9,12 +10,7 @@ static uint8_t storage[1048576] __attribute__((aligned(8)));
 static uint8_t input[4096], output[4096];
 
 static int64_t read_bytes(void *data, uint64_t length) {
-    register uint64_t a0 __asm__("a0") = 0;
-    register void *a1 __asm__("a1") = data;
-    register uint64_t a2 __asm__("a2") = length;
-    register uint64_t a7 __asm__("a7") = 63;
-    __asm__ volatile("ecall" : "+r"(a0) : "r"(a1), "r"(a2), "r"(a7) : "memory");
-    return (int64_t)a0;
+    return syscall3(SYS_READ, 0, data, length);
 }
 
 static int read_exact(uint8_t *data, uint64_t length) {
@@ -28,11 +24,7 @@ static int read_exact(uint8_t *data, uint64_t length) {
 }
 
 static void report(uint8_t result) {
-    register uint64_t a0 __asm__("a0") = 1;
-    register const uint8_t *a1 __asm__("a1") = &result;
-    register uint64_t a2 __asm__("a2") = 1;
-    register uint64_t a7 __asm__("a7") = 64;
-    __asm__ volatile("ecall" : "+r"(a0) : "r"(a1), "r"(a2), "r"(a7) : "memory");
+    syscall3(SYS_WRITE, 1, &result, 1);
 }
 
 static uint32_t read32(const uint8_t *data) {
@@ -51,7 +43,7 @@ static uint8_t check(const Operations *ops, uint64_t length) {
     return 0;
 }
 
-static int run(void) {
+int test_main(void) {
     uint8_t header[8];
     while (read_exact(header, sizeof(header))) {
         uint64_t index = read32(header), length = read32(header + 4);
@@ -61,11 +53,4 @@ static int run(void) {
         report(check(&operations[index], length));
     }
     return 0;
-}
-
-void _start(void) {
-    register uint64_t a0 __asm__("a0") = (uint64_t)run();
-    register uint64_t a7 __asm__("a7") = 93;
-    __asm__ volatile("ecall" : : "r"(a0), "r"(a7) : "memory");
-    __builtin_unreachable();
 }

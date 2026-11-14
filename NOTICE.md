@@ -1,7 +1,7 @@
 # Third-party provenance
 
-The RV64 symbolic instruction representation and GNU-as rendering are provided
-by [NyxFoundation/LeanAsm](https://github.com/NyxFoundation/LeanAsm), pinned in
+The RV64 symbolic vocabulary, x86-64 instruction representation, ABI helpers,
+and GNU-as rendering are provided by [NyxFoundation/LeanAsm](https://github.com/NyxFoundation/LeanAsm), pinned in
 `lakefile.toml`. LeanAsm records their adaptation from
 `EvmAsm/Codegen/Emit.lean` at
 [Verified-zkEVM/evm-asm](https://github.com/Verified-zkEVM/evm-asm/tree/7e65e4d024718f704226cd795f3d03d4e9aafe13).

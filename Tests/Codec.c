@@ -1,4 +1,6 @@
 #include "ssz_asm.h"
+#include "Platform.h"
+#include "Abi.h"
 
 typedef unsigned char U8;
 typedef unsigned long U64;
@@ -24,18 +26,12 @@ static U8 output[8192];
 static U64 checks;
 
 static void write_text(const char *s, U64 n) {
-  register U64 a0 __asm__("a0") = 1;
-  register const char *a1 __asm__("a1") = s;
-  register U64 a2 __asm__("a2") = n;
-  register U64 a7 __asm__("a7") = 64;
-  __asm__ volatile("ecall" : "+r"(a0) : "r"(a1), "r"(a2), "r"(a7) : "memory");
+  syscall3(SYS_WRITE, 1, s, n);
 }
 
 __attribute__((noreturn)) static void fail(const char *s, U64 n) {
   write_text(s, n);
-  register U64 a0 __asm__("a0") = 1;
-  register U64 a7 __asm__("a7") = 93;
-  __asm__ volatile("ecall" : : "r"(a0), "r"(a7) : "memory");
+  syscall3(SYS_EXIT, 1, 0, 0);
   __builtin_unreachable();
 }
 
@@ -139,42 +135,24 @@ static void allocation_boundaries(void) {
 }
 
 static void abi(void) {
-  register U64 r0 __asm__("s0") = 101, r1 __asm__("s1") = 102;
-  register U64 r2 __asm__("s2") = 103, r3 __asm__("s3") = 104;
-  register U64 r4 __asm__("s4") = 105, r5 __asm__("s5") = 106;
-  register U64 r6 __asm__("s6") = 107, r7 __asm__("s7") = 108;
-  register U64 r8 __asm__("s8") = 109, r9 __asm__("s9") = 110;
-  register U64 r10 __asm__("s10") = 111, r11 __asm__("s11") = 112;
+  ABI_SEED();
   U8 data[] = {1, 2}; ssz_value v = {data, 2, 0}, decoded;
-  __asm__ volatile("" : "+r"(r0), "+r"(r1), "+r"(r2), "+r"(r3),
-    "+r"(r4), "+r"(r5), "+r"(r6), "+r"(r7), "+r"(r8), "+r"(r9),
-    "+r"(r10), "+r"(r11) : : "memory");
+  ABI_BARRIER();
   CHECK(u16_serialize(&v, output, 2) == 2);
   ssz_arena a = arena(); CHECK(u16_deserialize(output, 2, &decoded, &a) == 0);
-  __asm__ volatile("" : "+r"(r0), "+r"(r1), "+r"(r2), "+r"(r3),
-    "+r"(r4), "+r"(r5), "+r"(r6), "+r"(r7), "+r"(r8), "+r"(r9),
-    "+r"(r10), "+r"(r11) : : "memory");
-  CHECK(r0 == 101 && r1 == 102 && r2 == 103 && r3 == 104);
-  CHECK(r4 == 105 && r5 == 106 && r6 == 107 && r7 == 108);
-  CHECK(r8 == 109 && r9 == 110 && r10 == 111 && r11 == 112);
+  ABI_BARRIER();
+  CHECK(ABI_INTACT);
 }
 
 static void report_checks(void) {
   char digits[24]; U64 n = checks, i = sizeof(digits);
   do { digits[--i] = '0' + n % 10; n /= 10; } while (n);
   write_text(digits + i, sizeof(digits) - i);
-  write_text(" codec QEMU checks passed\n", sizeof(" codec QEMU checks passed\n") - 1);
+  write_text(" codec checks passed\n", sizeof(" codec checks passed\n") - 1);
 }
 
-static int run(void) {
+int test_main(void) {
   runtime(); boundaries(); exhaustive_bit_delimiters();
   allocation_boundaries(); abi(); report_checks();
   return 0;
-}
-
-void _start(void) {
-  register U64 result __asm__("a0") = (U64)run();
-  register U64 syscall __asm__("a7") = 93;
-  __asm__ volatile("ecall" : : "r"(result), "r"(syscall) : "memory");
-  __builtin_unreachable();
 }

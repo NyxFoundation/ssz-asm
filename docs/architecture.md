@@ -1,10 +1,11 @@
 ---
 title: Architecture and ABI
-last_updated: 2026-11-12
+last_updated: 2026-11-14
 tags:
   - architecture
   - abi
   - riscv
+  - x86-64
   - ssz
 ---
 
@@ -14,11 +15,14 @@ tags:
 
 `Schema` represents all SSZ type families, including Progressive types and
 CompatibleUnion. A declaration is checked before emitting assembly.
-`Asm.Program` is a typed list of symbolic instruction/directive nodes; rendering
-checks immediates and identifiers. GNU binutils resolves symbolic labels.
+`Asm.Program` is a typed list of scalar operations, symbolic directives, and
+explicit frame entry/exit nodes. Its scalar vocabulary comes from LeanAsm's
+RV64 symbolic layer. `emitAssembly schemas target` selects `.rv64` (the default)
+or `.x86_64`; both use the same codec, SHA-256, and Merkle routines.
+Rendering checks immediates and identifiers. GNU binutils resolves labels.
 
 Each named schema produces three functions under the little-endian RISC-V
-LP64 C ABI. The public C structures and declaration macro are in
+LP64 C ABI or the Linux x86-64 System V AMD64 ABI. The public C structures and declaration macro are in
 `include/ssz_asm.h`. Callee-saved registers and 16-byte stack alignment are
 preserved. The library neither allocates with malloc nor performs syscalls.
 
@@ -30,6 +34,34 @@ Negative returns are `SSZ_INVALID` (-1), `SSZ_NO_SPACE` (-2), or
 `SSZ_OVERFLOW` (-3). Sequence and container encodings must fit the
 specification's exclusive 2^32 ceiling. Bitfields and unions follow their
 separate upstream rules. Hashing is not subject to an encoded-size ceiling.
+
+## Backend boundary
+
+`Asm.toRv64` expands frame directives using LeanAsm's LP64 helpers and returns
+`LeanAsm.Symbolic.Program`. `Asm.X64.lower` returns
+`LeanAsm.X64.Symbolic.Program`; LeanAsm emits its typed instructions in GNU
+Intel syntax. Neither path claims fixed-instruction lowering of code plus data.
+
+The x86-64 backend keeps virtual registers in a 256-byte invocation-local bank
+addressed by RBP. RSP addresses a separate 16-byte-rounded local area. LeanAsm's
+SysV helpers preserve the six native callee-saved registers and align RSP before
+calls. Total frame allocation is 312 bytes plus the rounded local area, excluding
+the call's return address. Recursive calls have independent banks; no heap or
+shared register state is used. This initial backend favors correctness over
+register-allocation performance.
+
+Calls marshal a0–a5 to the six SysV integer argument registers and return RAX to
+a0. Only a0 is a return value; caller-saved virtual values must not be relied on
+after calls. Frame directives own stack adjustment. Arbitrary RV64 programs,
+ra/gp/tp, a6/a7, and signed division are rejected rather than approximated.
+The SSZ generators do not use those operations. Word arithmetic and shifts
+retain RV-style 32-bit sign extension, and unsigned division by zero retains
+its defined RV result. Constants use RIP-relative addresses and four-byte
+little-endian words, including in PIE executables.
+
+The x86-64 target is scalar, Linux/System V only. Windows, 32-bit x86, SIMD
+optimization, and correctness proofs are not included. Execution tests check
+both targets against the same pinned SSZ reference; they are not proofs.
 
 ## Value representation
 
